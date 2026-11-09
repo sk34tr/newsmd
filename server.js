@@ -11,10 +11,16 @@ app.use(cors());
 app.use(express.json());
 
 app.post('/api/download', async (req, res) => {
-    const { url } = req.body;
+    let { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL gerekli' });
 
     try {
+        // YENİ: INSTAGRAM LİNK TEMİZLEYİCİ
+        if (url.includes('instagram.com')) {
+            url = url.split('?')[0]; // Linkin sonundaki takip ve dil kodlarını (?hl=tr vb.) siler
+            url = url.replace('/reels/', '/reel/'); // Çoğul 'reels' ekini, standart 'reel' yapar
+        }
+
         console.log(`İşleniyor: ${url}`);
 
         const output = await youtubedl(url, {
@@ -23,12 +29,9 @@ app.post('/api/download', async (req, res) => {
             noCallHome: true,
             noCheckCertificate: true,
             youtubeSkipDashManifest: true,
-            // ÇÖZÜM BURADA: Sunucuda birleştirici (FFMPEG) olmadığı için, 
-            // sadece "ses ve görüntüsü zaten BİRLEŞİK olan" en iyi MP4'ü ('b') istiyoruz.
             format: 'b[ext=mp4]/b' 
         });
 
-        // Tüm platformların indirme linki yapılarını tara
         const directUrl = output.url || 
                           (output.requested_downloads && output.requested_downloads[0].url) || 
                           (output.entries && output.entries[0] && output.entries[0].url);
