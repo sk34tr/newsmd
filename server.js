@@ -15,21 +15,36 @@ app.post('/api/download', async (req, res) => {
     if (!url) return res.status(400).json({ error: 'URL gerekli' });
 
     try {
-        if (url.includes('instagram.com')) {
-            url = url.split('?')[0]; 
-            url = url.replace('/reels/', '/reel/'); 
-        }
-
         console.log(`İşleniyor: ${url}`);
-
-        const output = await youtubedl(url, {
+        
+        // Temel (Ortak) Ayarlar
+        let dlOptions = {
             dumpSingleJson: true,
             noWarnings: true,
             noCallHome: true,
             noCheckCertificate: true,
-            youtubeSkipDashManifest: true,
-            format: 'b[ext=mp4]/b' 
-        });
+        };
+
+        // YENİ: Platforma Özel Zeka (Smart Routing)
+        if (url.includes('instagram.com')) {
+            url = url.split('?')[0]; 
+            url = url.replace('/reels/', '/reel/'); 
+            dlOptions.format = 'b[ext=mp4]/b';
+            
+        } else if (url.includes('x.com') || url.includes('twitter.com')) {
+            dlOptions.youtubeSkipDashManifest = true; // X için gerekli
+            dlOptions.format = 'best[ext=mp4]/best';
+            
+        } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            // YouTube için: Dash Manifest atlanmaz, FFmpeg olmadığı için hazır birleşik olan 720p(22) veya 360p(18) istenir
+            dlOptions.format = '22/18/best[ext=mp4]/best'; 
+            
+        } else {
+            // Facebook ve Diğerleri
+            dlOptions.format = 'b[ext=mp4]/b';
+        }
+
+        const output = await youtubedl(url, dlOptions);
 
         const directUrl = output.url || 
                           (output.requested_downloads && output.requested_downloads[0].url) || 
@@ -46,10 +61,13 @@ app.post('/api/download', async (req, res) => {
     } catch (error) {
         console.error('Hata:', error.message);
         
-        // ÖZEL HATA YAKALAMA BÖLÜMÜ
+        // PLATFORMLARA ÖZEL HATA MESAJLARI
         let hataMesaji = 'Video ayrıştırılamadı. Korumalı içerik olabilir veya platform engelliyor.';
+        
         if (url.includes('instagram.com')) {
-            hataMesaji = 'Instagram güvenlik duvarı bulut sunucumuzu engelledi (Login Wall). Bu platform için yerel ağ gereklidir.';
+            hataMesaji = 'Instagram güvenlik duvarı (Login Wall) sunucumuzu engelledi. Yerel IP gereklidir.';
+        } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            hataMesaji = 'YouTube bot koruması (HTTP 403) devreye girdi. YouTube bulut sunucuların IP adreslerini engellemektedir.';
         }
         
         res.status(500).json({ error: hataMesaji });
