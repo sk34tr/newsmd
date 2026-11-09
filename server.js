@@ -15,10 +15,9 @@ app.post('/api/download', async (req, res) => {
     if (!url) return res.status(400).json({ error: 'URL gerekli' });
 
     try {
-        // YENİ: INSTAGRAM LİNK TEMİZLEYİCİ
         if (url.includes('instagram.com')) {
-            url = url.split('?')[0]; // Linkin sonundaki takip ve dil kodlarını (?hl=tr vb.) siler
-            url = url.replace('/reels/', '/reel/'); // Çoğul 'reels' ekini, standart 'reel' yapar
+            url = url.split('?')[0]; 
+            url = url.replace('/reels/', '/reel/'); 
         }
 
         console.log(`İşleniyor: ${url}`);
@@ -46,7 +45,14 @@ app.post('/api/download', async (req, res) => {
         });
     } catch (error) {
         console.error('Hata:', error.message);
-        res.status(500).json({ error: 'Video ayrıştırılamadı. Korumalı içerik olabilir veya platform engelliyor.' });
+        
+        // ÖZEL HATA YAKALAMA BÖLÜMÜ
+        let hataMesaji = 'Video ayrıştırılamadı. Korumalı içerik olabilir veya platform engelliyor.';
+        if (url.includes('instagram.com')) {
+            hataMesaji = 'Instagram güvenlik duvarı bulut sunucumuzu engelledi (Login Wall). Bu platform için yerel ağ gereklidir.';
+        }
+        
+        res.status(500).json({ error: hataMesaji });
     }
 });
 
