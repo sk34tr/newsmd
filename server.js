@@ -17,30 +17,24 @@ app.post('/api/download', async (req, res) => {
     try {
         console.log(`İşleniyor: ${url}`);
 
-        // Linkin hangi platforma ait olduğunu tespit et
-        const isTwitter = url.includes('x.com') || url.includes('twitter.com');
-        
-        // Sadece X ise katı MP4 kuralını uygula, diğerlerinde esnek davran (böylece YT ve Insta çökmez)
-        const formatSetting = isTwitter 
-            ? 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best' 
-            : 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'; 
-
         const output = await youtubedl(url, {
             dumpSingleJson: true,
             noWarnings: true,
             noCallHome: true,
             noCheckCertificate: true,
             youtubeSkipDashManifest: true,
-            format: formatSetting // Dinamik kuralı buraya atıyoruz
+            // ÇÖZÜM BURADA: Sunucuda birleştirici (FFMPEG) olmadığı için, 
+            // sadece "ses ve görüntüsü zaten BİRLEŞİK olan" en iyi MP4'ü ('b') istiyoruz.
+            format: 'b[ext=mp4]/b' 
         });
 
-        // Tüm platformların indirme linki dizinlerini tara
+        // Tüm platformların indirme linki yapılarını tara
         const directUrl = output.url || 
                           (output.requested_downloads && output.requested_downloads[0].url) || 
                           (output.entries && output.entries[0] && output.entries[0].url);
 
         if (!directUrl) {
-            throw new Error("Video bulundu fakat platform doğrudan MP4 linki vermeyi reddetti.");
+            throw new Error("Video bulundu fakat indirme bağlantısı alınamadı.");
         }
 
         res.json({ 
@@ -57,7 +51,7 @@ app.get('/api/stream', (req, res) => {
     const videoUrl = req.query.url;
     
     if (!videoUrl || videoUrl === 'undefined' || videoUrl === 'null') {
-        return res.status(400).send('Hata: Video bağlantısı geçersiz. Lütfen tekrar ayrıştırın.');
+        return res.status(400).send('Hata: Video bağlantısı geçersiz.');
     }
 
     res.setHeader('Content-Disposition', 'attachment; filename="indirilen_video.mp4"');
