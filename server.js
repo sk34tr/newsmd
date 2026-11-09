@@ -10,7 +10,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// 1. Videonun bilgilerini bulan ana bölüm
 app.post('/api/download', async (req, res) => {
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: 'URL gerekli' });
@@ -22,47 +21,58 @@ app.post('/api/download', async (req, res) => {
             noWarnings: true,
             noCallHome: true,
             noCheckCertificate: true,
-            preferFreeFormats: true,
-            youtubeSkipDashManifest: true
+            youtubeSkipDashManifest: true,
+            // X (Twitter) için parçalı dosyaları reddet, sadece MP4'ü zorla:
+            format: 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best'
         });
+
+        // X gibi sitelerde MP4 linki farklı klasörlerde saklanabilir, hepsini tara:
+        const directUrl = output.url || 
+                          (output.requested_downloads && output.requested_downloads[0].url) || 
+                          (output.entries && output.entries[0] && output.entries[0].url);
+
+        // Eğer link gerçekten bulunamazsa çökmesini engelle ve hata ver
+        if (!directUrl) {
+            throw new Error("Video bulundu fakat platform doğrudan MP4 linki vermeyi reddetti.");
+        }
 
         res.json({ 
             title: output.title || 'Video',
-            downloadUrl: output.url 
+            downloadUrl: directUrl 
         });
     } catch (error) {
         console.error('Hata:', error.message);
-        res.status(500).json({ error: 'Video bulunamadı veya korumalı içerik.' });
+        res.status(500).json({ error: 'Video ayrıştırılamadı. Linkin doğruluğunu kontrol edin.' });
     }
 });
 
-// 2. YENİ EKLENEN BÖLÜM: Tarayıcıyı zorla indirmeye iten köprü (Proxy)
 app.get('/api/stream', (req, res) => {
     const videoUrl = req.query.url;
-    if (!videoUrl) return res.status(400).send('Video bağlantısı eksik');
+    
+    // "undefined" hatasını yakala ve sunucunun çökmesini (ERR_INVALID_RESPONSE) engelle
+    if (!videoUrl || videoUrl === 'undefined' || videoUrl === 'null') {
+        return res.status(400).send('Hata: Video bağlantısı geçersiz. Lütfen tekrar ayrıştırın.');
+    }
 
-    // Tarayıcıya bunun bir indirme dosyası olduğunu emrediyoruz
     res.setHeader('Content-Disposition', 'attachment; filename="indirilen_video.mp4"');
     res.setHeader('Content-Type', 'video/mp4');
 
     const requestModule = videoUrl.startsWith('https') ? https : http;
     
     requestModule.get(videoUrl, (videoRes) => {
-        // Güvenlik yönlendirmelerini takip et
         if (videoRes.statusCode >= 300 && videoRes.statusCode < 400 && videoRes.headers.location) {
             const redirectUrl = videoRes.headers.location;
             const redirectModule = redirectUrl.startsWith('https') ? https : http;
             
             redirectModule.get(redirectUrl, (redirectRes) => {
                 redirectRes.pipe(res);
-            }).on('error', () => res.status(500).send('Yönlendirme hatası'));
+            }).on('error', () => res.status(500).send('Yönlendirme başarısız oldu.'));
         } else {
-            // Videoyu doğrudan kullanıcıya akıt
             videoRes.pipe(res);
         }
     }).on('error', (err) => {
         console.error('Akış hatası:', err.message);
-        res.status(500).send('İndirme başarısız');
+        res.status(500).send('İndirme başarısız oldu.');
     });
 });
 
