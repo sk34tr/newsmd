@@ -16,22 +16,29 @@ app.post('/api/download', async (req, res) => {
 
     try {
         console.log(`İşleniyor: ${url}`);
+
+        // Linkin hangi platforma ait olduğunu tespit et
+        const isTwitter = url.includes('x.com') || url.includes('twitter.com');
+        
+        // Sadece X ise katı MP4 kuralını uygula, diğerlerinde esnek davran (böylece YT ve Insta çökmez)
+        const formatSetting = isTwitter 
+            ? 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best' 
+            : 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'; 
+
         const output = await youtubedl(url, {
             dumpSingleJson: true,
             noWarnings: true,
             noCallHome: true,
             noCheckCertificate: true,
             youtubeSkipDashManifest: true,
-            // X (Twitter) için parçalı dosyaları reddet, sadece MP4'ü zorla:
-            format: 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best'
+            format: formatSetting // Dinamik kuralı buraya atıyoruz
         });
 
-        // X gibi sitelerde MP4 linki farklı klasörlerde saklanabilir, hepsini tara:
+        // Tüm platformların indirme linki dizinlerini tara
         const directUrl = output.url || 
                           (output.requested_downloads && output.requested_downloads[0].url) || 
                           (output.entries && output.entries[0] && output.entries[0].url);
 
-        // Eğer link gerçekten bulunamazsa çökmesini engelle ve hata ver
         if (!directUrl) {
             throw new Error("Video bulundu fakat platform doğrudan MP4 linki vermeyi reddetti.");
         }
@@ -42,14 +49,13 @@ app.post('/api/download', async (req, res) => {
         });
     } catch (error) {
         console.error('Hata:', error.message);
-        res.status(500).json({ error: 'Video ayrıştırılamadı. Linkin doğruluğunu kontrol edin.' });
+        res.status(500).json({ error: 'Video ayrıştırılamadı. Korumalı içerik olabilir veya platform engelliyor.' });
     }
 });
 
 app.get('/api/stream', (req, res) => {
     const videoUrl = req.query.url;
     
-    // "undefined" hatasını yakala ve sunucunun çökmesini (ERR_INVALID_RESPONSE) engelle
     if (!videoUrl || videoUrl === 'undefined' || videoUrl === 'null') {
         return res.status(400).send('Hata: Video bağlantısı geçersiz. Lütfen tekrar ayrıştırın.');
     }
